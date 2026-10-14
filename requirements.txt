@@ -1,0 +1,10 @@
+flask
+twilio
+requests
+groq
+psycopg2-binary
+sqlalchemy
+gunicorn
+fpdf2
+python-dotenv
+pydub
