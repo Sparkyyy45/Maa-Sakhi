@@ -475,6 +475,10 @@ def _maps_link(address, village):
     return f"https://www.google.com/maps/dir/?api=1&destination={encoded}"
 
 
+def _twiml_response(resp):
+    return Response(str(resp), mimetype="application/xml")
+
+
 # ─────────────────────────────────────────────────────────────────
 # WHATSAPP BOT
 # ─────────────────────────────────────────────────────────────────
@@ -502,7 +506,7 @@ def whatsapp_reply():
                     "Maafi chahti hoon — main aapka voice note samajh "
                     "nahi payi. 🙏\nPlease type your symptom in text."
                 )
-                return str(response)
+                return _twiml_response(response)
     except Exception as e:
         print(f"Voice handling error: {e}")
 
@@ -512,7 +516,7 @@ def whatsapp_reply():
             "🌸 Namaste! Kripya apna message, sawaal ya symptom text ya voice note mein bhejein. "
             "MaaSakhi aapki seva mein 24/7 uplabdh hai. 💚"
         )
-        return str(response)
+        return _twiml_response(response)
 
     # ── Load / create patient ─────────────────────────────────────
     user = get_patient(sender) or {
@@ -544,7 +548,7 @@ def whatsapp_reply():
             "Please date bhejein — format: DD/MM/YYYY\n"
             "Example: 24/04/2026"
         )
-        return str(response)
+        return _twiml_response(response)
 
     # ── Delivery date collection (Month 4) ────────────────────────
     if user["step"] == "get_delivery_date":
@@ -605,7 +609,7 @@ def whatsapp_reply():
                 "Date samajh nahi aayi. Please DD/MM/YYYY format ya 'today'/'aaj' bhejein.\n"
                 "Example: 24/04/2026"
             )
-        return str(response)
+        return _twiml_response(response)
 
     # ─────────────────────────────────────────────────────────────
     # REGISTRATION FLOW
@@ -622,7 +626,7 @@ def whatsapp_reply():
             "Pehle mujhe apna naam batao:\n"
             "Please tell me your name:"
         )
-        return str(response)
+        return _twiml_response(response)
 
     if incoming_msg.lower() in [
         "register", "register pregnancy",
@@ -634,7 +638,7 @@ def whatsapp_reply():
                 f"Aap week {user['week']} mein hain. Main hamesha yahan hoon. 💚\n\n"
                 "Koi symptom feel ho toh batao, ya 'progress' type karo! 🌸"
             )
-            return str(response)
+            return _twiml_response(response)
 
         save_patient(sender, "", 0, "get_name")
         msg.body(
@@ -758,7 +762,7 @@ def whatsapp_reply():
                 )
             else:
                 msg.body(f"🌸 Bahut khushi hui sunke, {user['name']}! 💚 Apna dhyan rakhein, aage koi bhi takleef ho toh mujhe zaroor batayein.")
-            return str(response)
+            return _twiml_response(response)
 
         if recovery == "NOT_WELL":
             save_asha_alert_db(
@@ -774,7 +778,7 @@ def whatsapp_reply():
                 f"🚨 ASHA worker ko dobara alert kar diya gaya hai, {user['name']}.\n\n"
                 "Please nearest health centre zaroor jaayein. 🏥\n\nAap akeli nahi hain. 💚"
             )
-            return str(response)
+            return _twiml_response(response)
 
         # ── Month 1: govt scheme queries ──────────────────────────
         if any(k in incoming_msg.lower() for k in [
@@ -792,7 +796,7 @@ def whatsapp_reply():
                 )
             scheme_reply += "Aapki ASHA worker in yojanaon mein madad karegi. 🌸"
             msg.body(scheme_reply)
-            return str(response)
+            return _twiml_response(response)
 
         # ── Language change command ───────────────────────────────
         if incoming_msg.lower().startswith("change language"):
@@ -814,7 +818,7 @@ def whatsapp_reply():
                     "Please say: *change language to [language name]*\n"
                     "Example: change language to Tamil"
                 )
-            return str(response)
+            return _twiml_response(response)
 
         # ── Progress tracker ──────────────────────────────────────
         if is_tracker_request(incoming_msg):
@@ -822,7 +826,7 @@ def whatsapp_reply():
                 user["week"], user["name"], sender, user["language"]
             )
             msg.body(reply)
-            return str(response)
+            return _twiml_response(response)
 
         # ── AI symptom analysis ───────────────────────────────────
         is_postpartum = user.get("status") == "postpartum"
@@ -865,7 +869,7 @@ def whatsapp_reply():
     else:
         msg.body("Namaste! 'Register' ya 'Hello' type karke shuru karein. 🌸")
 
-    return str(response)
+    return _twiml_response(response)
 
 
 # ─────────────────────────────────────────────────────────────────
