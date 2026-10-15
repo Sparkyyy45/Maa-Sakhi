@@ -57,10 +57,10 @@ def send_whatsapp(to_phone: str, message: str) -> bool:
             to=to_phone,
             body=message
         )
-        print(f"[escalation] WhatsApp sent → {to_phone} | SID: {msg.sid}")
+        print(f"[escalation] WhatsApp sent -> {to_phone} | SID: {msg.sid}")
         return True
     except Exception as e:
-        print(f"[escalation] WhatsApp error → {to_phone}: {e}")
+        print(f"[escalation] WhatsApp error -> {to_phone}: {e}")
         return False
 
 
@@ -79,10 +79,10 @@ def _send_sms_fallback(to_phone: str, message: str) -> bool:
             to=clean,
             body=message[:1600]          # SMS limit safety
         )
-        print(f"[escalation] SMS fallback sent → {clean} | SID: {msg.sid}")
+        print(f"[escalation] SMS fallback sent -> {clean} | SID: {msg.sid}")
         return True
     except Exception as e:
-        print(f"[escalation] SMS fallback error → {clean}: {e}")
+        print(f"[escalation] SMS fallback error -> {clean}: {e}")
         return False
 
 
@@ -90,7 +90,7 @@ def _send_with_fallback(to_phone: str, message: str) -> bool:
     """Try WhatsApp first; fall back to SMS if it fails."""
     if send_whatsapp(to_phone, message):
         return True
-    print(f"[escalation] WhatsApp failed → trying SMS fallback for {to_phone}")
+    print(f"[escalation] WhatsApp failed -> trying SMS fallback for {to_phone}")
     return _send_sms_fallback(to_phone, message)
 
 

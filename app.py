@@ -110,7 +110,7 @@ def send_whatsapp(to, body):
                 body=body
             )
         except Exception as e:
-            print(f"WhatsApp send error → {to}: {e}")
+            print(f"WhatsApp send error -> {to}: {e}")
 
     threading.Thread(target=_send, daemon=True).start()
 
