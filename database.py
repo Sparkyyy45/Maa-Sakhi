@@ -9,43 +9,103 @@
 
 import os
 import re
+import time
+import urllib.parse as urllib_parse
 from datetime import datetime, date, timedelta
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Load environment variables (.env)
+load_dotenv()
 
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
-elif DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=180,
-    pool_pre_ping=True,
-    connect_args={
-        "connect_timeout": 5,
-        "keepalives": 1,
-        "keepalives_idle": 30,
-        "keepalives_interval": 10,
-        "keepalives_count": 5
-    }
-) if DATABASE_URL else None
+def sanitize_database_url(url: str) -> str:
+    """
+    Cleans and standardizes the database connection URL:
+    - Normalizes postgres:// and postgresql:// to postgresql+psycopg2://
+    - Removes 'channel_binding' (causes psycopg2 OperationalError e3q8 on Render/Linux)
+    - Ensures sslmode=require for cloud-hosted databases (Neon, Render external, Supabase, AWS, etc.)
+    """
+    if not url:
+        return ""
+    url = url.strip()
 
+    # 1. Scheme normalization for SQLAlchemy with psycopg2
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+
+    # 2. Parameter normalization for PostgreSQL connections
+    if "postgresql" in url:
+        try:
+            parsed = urllib_parse.urlparse(url)
+            query_pairs = urllib_parse.parse_qsl(parsed.query, keep_blank_values=True)
+
+            # Strip channel_binding (incompatible with psycopg2 on Render Linux containers)
+            cleaned_pairs = [(k, v) for k, v in query_pairs if k != "channel_binding"]
+
+            # Ensure SSL mode for remote cloud hosts
+            host = (parsed.hostname or "").lower()
+            cloud_indicators = ["neon.tech", "render.com", "supabase.co", "aws.", "railway.app", "elephantsql.com", "aivencloud.com"]
+            is_cloud = any(ind in host for ind in cloud_indicators)
+            has_ssl = any(k == "sslmode" for k, _ in cleaned_pairs)
+
+            if not has_ssl:
+                if is_cloud:
+                    cleaned_pairs.append(("sslmode", "require"))
+                elif host not in ("localhost", "127.0.0.1", "") and not host.endswith("-a"):
+                    cleaned_pairs.append(("sslmode", "require"))
+
+            new_query = urllib_parse.urlencode(cleaned_pairs)
+            url = urllib_parse.urlunparse(parsed._replace(query=new_query))
+        except Exception as e:
+            print(f"[database] URL sanitization warning: {e}")
+            for pattern in ["&channel_binding=require", "channel_binding=require&", "?channel_binding=require", "&channel_binding=prefer", "?channel_binding=prefer"]:
+                url = url.replace(pattern, "")
+
+    return url
+
+
+DATABASE_URL = sanitize_database_url(os.environ.get("DATABASE_URL", ""))
+
+
+def create_db_engine(url: str):
+    """Creates a resilient SQLAlchemy engine with connection pooling and timeouts."""
+    if not url:
+        return None
+    try:
+        connect_args = {}
+        if "postgresql" in url or "postgres" in url:
+            connect_args = {
+                "connect_timeout": 30,  # 30s timeout gives sleeping serverless instances (Neon) time to resume
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5
+            }
+
+        return create_engine(
+            url,
+            pool_size=5,          # Safe pool size for serverless connection poolers (Neon PgBouncer / Render free tier)
+            max_overflow=10,
+            pool_recycle=180,
+            pool_pre_ping=True,   # Tests liveness with SELECT 1 before checkout, reconnecting stale/dropped connections
+            connect_args=connect_args
+        )
+    except Exception as e:
+        print(f"[database] Engine initialization error: {e}")
+        return None
+
+
+engine = create_db_engine(DATABASE_URL)
 
 
 # -----------------------------------------------------------------
 # INIT
 # -----------------------------------------------------------------
 
-def init_db():
-    if not engine:
-        print("No database URL -- using memory mode")
-        return
-
-    with engine.connect() as conn:
+def _execute_schema_ddl(conn):
 
         # TIER 1: Admins
         conn.execute(text(
@@ -339,7 +399,36 @@ def init_db():
         ))
 
         conn.commit()
-        print("Database tables created -- Full 5-tier hierarchy ready!")
+
+
+def init_db(max_retries: int = 3, retry_delay: int = 3) -> bool:
+    """
+    Initializes the database schema with retry logic and error resilience.
+    Does not crash the application process if connection is temporarily unavailable.
+    """
+    global engine
+    if not engine and DATABASE_URL:
+        engine = create_db_engine(DATABASE_URL)
+
+    if not engine:
+        print("[database] No database URL configured -- operating in memory/offline mode")
+        return False
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"[database] Connecting & verifying tables (attempt {attempt}/{max_retries})...")
+            with engine.connect() as conn:
+                _execute_schema_ddl(conn)
+            print("[database] Database tables created -- Full 5-tier hierarchy ready!")
+            return True
+        except Exception as e:
+            print(f"[database] Database init attempt {attempt}/{max_retries} failed: {e}")
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            else:
+                print(f"[database] WARNING: Database init could not complete at startup: {e}")
+                print("[database] Application will continue running; connection will be retried on subsequent requests.")
+                return False
 
 
 # =================================================================

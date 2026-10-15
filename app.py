@@ -82,8 +82,16 @@ from database import (
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "maasakhi2026secret")
 
-init_db()
-start_escalation_engine()
+# Safe startup initialization
+try:
+    init_db()
+except Exception as e:
+    print(f"[startup] Database initialization non-fatal warning: {e}")
+
+try:
+    start_escalation_engine()
+except Exception as e:
+    print(f"[startup] Escalation engine startup error: {e}")
 
 TWILIO_WA_FROM = "whatsapp:+14155238886"
 
