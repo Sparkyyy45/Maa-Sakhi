@@ -106,6 +106,12 @@ engine = create_db_engine(DATABASE_URL)
 # -----------------------------------------------------------------
 
 def _execute_schema_ddl(conn):
+        # Acquire advisory transaction lock for Postgres to prevent multi-worker DDL deadlocks on boot
+        if engine and "postgresql" in str(engine.url):
+            try:
+                conn.execute(text("SELECT pg_advisory_xact_lock(742195)"))
+            except Exception as lock_err:
+                print(f"[database] Advisory lock notice: {lock_err}")
 
         # TIER 1: Admins
         conn.execute(text(
